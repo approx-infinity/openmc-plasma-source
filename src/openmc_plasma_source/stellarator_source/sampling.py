@@ -10,9 +10,9 @@ import openmc
 from openmc import IndependentSource
 
 from ..fuel_types import get_neutron_energy_distribution
-from .emission import fusion_emission_densities
+from ..emission import fusion_emission_densities
 from .geometry import FourierZernikeSurface
-from .profiles import ion_density_profile, ion_temperature_profile
+from ..profiles import ion_density_profile, ion_temperature_profile
 
 
 @dataclass

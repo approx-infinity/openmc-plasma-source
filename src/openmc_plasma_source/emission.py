@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 from NeSST.spectral_model import reac_DD, reac_DT, reac_TT
 
-from ..fuel_types import get_reactions_from_fuel
+from .fuel_types import get_reactions_from_fuel
 
 _EV_TO_J = 1.602176634e-19
 _FUSION_Q_MEV = {
@@ -80,9 +80,9 @@ def reaction_fuel_density(
     ion_density : float or array-like
         Total ion density in m^-3.
     fuel : mapping of str to float
-        Species fractions, such as ``{"D": 0.5, "T": 0.5}``.
+        Fuel species fractions, such as ``{"D": 0.5, "T": 0.5}``.
     reaction : str
-        Reaction key ``"DD"``, ``"DT"``, or ``"TT"``.
+        Reaction key: ``"DD"``, ``"DT"``, or ``"TT"``.
 
     Returns
     -------
@@ -144,7 +144,8 @@ def fusion_emission_densities(
     tuple of numpy.ndarray
         ``(neutron_source_density, fusion_power_density)``. Units are
         neutrons/s/m^3 and W/m^3, respectively. The T-T channel contributes
-        two neutrons per reaction; the other supported channels contribute one.
+        two neutrons per reaction; the other supported channels contribute
+        one.
     """
 
     density = np.asarray(ion_density)

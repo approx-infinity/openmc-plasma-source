@@ -10,7 +10,7 @@ on:
       - ".github/workflows/docs.yml"
   push:
     branches:
-      - main
+      - stellarator_source
     paths:
       - "docs/**"
       - "examples/**"

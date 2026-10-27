@@ -1,8 +1,4 @@
-"""Geometry primitives for the stellarator source implementation.
-
-This package is intentionally separate from the public source-construction
-API while the geometry and optimization layers are being developed.
-"""
+"""Geometry primitives for the stellarator source implementation."""
 
 from .basis import (
     ZernikeMode,
@@ -24,7 +20,7 @@ from .geometry import (
     FourierZernikeSurface,
     SurfaceEvaluation,
 )
-from .emission import (
+from ..emission import (
     fusion_emission_densities,
     reaction_fuel_density,
     reaction_rate_density,
@@ -42,7 +38,7 @@ from .optimizer import (
     make_optimization_objective,
     optimize_surface,
 )
-from .profiles import ion_density_profile, ion_temperature_profile
+from ..profiles import ion_density_profile, ion_temperature_profile
 from .sampling import StellaratorSource, sample_stellarator_source
 from .source import stellarator_source
 from .validation import (

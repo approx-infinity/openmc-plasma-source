@@ -8,11 +8,11 @@ from openmc import IndependentSource
 import openmc.checkvalue as cv
 
 from .fuel_types import get_neutron_energy_distribution, get_reactions_from_fuel
-from .stellarator_source.emission import (
+from .emission import (
     fusion_emission_densities,
     reaction_rate_density,
 )
-from .stellarator_source.profiles import ion_density_profile, ion_temperature_profile
+from .profiles import ion_density_profile, ion_temperature_profile
 
 
 @dataclass
@@ -387,94 +387,6 @@ def tokamak_source(
     )
 
 
-def tokamak_ion_density(
-    mode: str,
-    ion_density_centre: float,
-    ion_density_peaking_factor: float,
-    ion_density_pedestal: float,
-    minor_radius: float,
-    pedestal_radius: float,
-    ion_density_separatrix: float,
-    r: Union[float, NDArray],
-) -> NDArray:
-    """
-    Computes the ion density at a given position. The ion density is
-    only dependent on the minor radius.
-
-    Args:
-        mode: Confinement mode ("L", "H", "A")
-        ion_density_centre: Ion density at the plasma centre (m-3)
-        ion_density_peaking_factor: Ion density peaking factor
-            (dimensionless, referred in [1] as ion density exponent)
-        ion_density_pedestal: Ion density at pedestal (m-3)
-        minor_radius: Plasma minor radius (cm)
-        pedestal_radius: Minor radius at pedestal (cm)
-        ion_density_separatrix: Ion density at separatrix (m-3)
-        r: Local minor radius (cm)
-
-    Returns:
-        ion density (m-3)
-    """
-
-    return ion_density_profile(
-        mode=mode,
-        ion_density_centre=ion_density_centre,
-        ion_density_peaking_factor=ion_density_peaking_factor,
-        ion_density_pedestal=ion_density_pedestal,
-        minor_radius=minor_radius,
-        pedestal_radius=pedestal_radius,
-        ion_density_separatrix=ion_density_separatrix,
-        r=r,
-    )
-
-
-def tokamak_ion_temperature(
-    r: Union[float, NDArray],
-    mode: str,
-    pedestal_radius: float,
-    ion_temperature_pedestal: float,
-    ion_temperature_centre: float,
-    ion_temperature_beta: float,
-    ion_temperature_peaking_factor: float,
-    ion_temperature_separatrix: float,
-    minor_radius: float,
-) -> NDArray:
-    """
-    Computes the ion temperature at a given position. The ion
-    temperature is only dependent on the minor radius.
-
-    Args:
-        r: Local minor radius (cm)
-        mode: Confinement mode ("L", "H", "A")
-        pedestal_radius: Minor radius at pedestal (cm)
-        ion_temperature_pedestal: Ion temperature at pedestal (keV)
-        ion_temperature_centre: Ion temperature at the plasma
-            centre (keV)
-        ion_temperature_beta: Ion temperature beta exponent
-            (dimensionless)
-        ion_temperature_peaking_factor: Ion temperature peaking
-            factor (dimensionless)
-        ion_temperature_separatrix: Ion temperature at separatrix
-            (keV)
-        minor_radius: Plasma minor radius (cm)
-
-    Returns:
-        ion temperature (eV)
-    """
-
-    return ion_temperature_profile(
-        r=r,
-        mode=mode,
-        pedestal_radius=pedestal_radius,
-        ion_temperature_pedestal=ion_temperature_pedestal,
-        ion_temperature_centre=ion_temperature_centre,
-        ion_temperature_beta=ion_temperature_beta,
-        ion_temperature_peaking_factor=ion_temperature_peaking_factor,
-        ion_temperature_separatrix=ion_temperature_separatrix,
-        minor_radius=minor_radius,
-    )
-
-
 def tokamak_convert_a_alpha_to_R_Z(
     a: Union[float, NDArray],
     alpha: Union[float, NDArray],
@@ -515,40 +427,9 @@ def tokamak_convert_a_alpha_to_R_Z(
     return (R, Z)
 
 
-def tokamak_neutron_source_density(
-    ion_density: Union[float, NDArray],
-    ion_temperature: Union[float, NDArray],
-    reaction: str,
-) -> NDArray:
-    """
-    Computes the neutron source density given ion density and ion
-    temperature.
-
-    Args:
-        ion_density: Ion density (m-3)
-        ion_temperature: Ion temperature (eV)
-        reaction: The fusion reactions to consider e.g. 'DD'
-
-    Returns:
-        Neutron source density (neutron/s/m3)
-    """
-
-    return tokamak_reaction_rate(ion_density, ion_temperature, reaction)
-
-
-def tokamak_reaction_rate(
-    ion_density: Union[float, NDArray],
-    ion_temperature: Union[float, NDArray],
-    reaction: str,
-) -> NDArray:
-    """Compute the fusion reaction rate density for a reaction.
-
-    Args:
-        ion_density: Reaction-specific density factor (m-3).
-        ion_temperature: Ion temperature (eV).
-        reaction: Fusion reaction, one of ``"DD"``, ``"DT"``, or ``"TT"``.
-
-    Returns:
-        Fusion reaction rate density (reactions/s/m3).
-    """
-    return reaction_rate_density(ion_density, ion_temperature, reaction)
+# Preserving the historical tokamak helper names as aliases while keeping the
+# shared implementations in the package-level modules.
+tokamak_ion_density = ion_density_profile
+tokamak_ion_temperature = ion_temperature_profile
+tokamak_neutron_source_density = reaction_rate_density
+tokamak_reaction_rate = reaction_rate_density
