@@ -12,7 +12,7 @@ from openmc_plasma_source.stellarator_source import (
 )
 
 
-def _constant_profile_source():
+def _constant_profile_source(start_angle=0.0, rotation_angle=2.0 * math.pi):
     major_radius = 550.0
     minor_radius = 50.0
     nfp = 4
@@ -39,6 +39,8 @@ def _constant_profile_source():
         fuel={"D": 0.5, "T": 0.5},
         sample_size=(8, 16, 8),
         mesh_resolution=(10, 12, 10),
+        start_angle=start_angle,
+        rotation_angle=rotation_angle,
     )
     return result, surface, major_radius, minor_radius, elongation
 
@@ -81,3 +83,50 @@ def test_uniform_stellarator_volume_source_and_power():
     assert result.fusion_power == pytest.approx(
         expected_volume_m3 * float(power_density) * 1.0e-6, rel=2.0e-3
     )
+
+
+def test_toroidal_sector_scales_volume_source_and_power():
+    full, *_ = _constant_profile_source()
+    half, *_ = _constant_profile_source(
+        start_angle=0.25 * math.pi, rotation_angle=math.pi
+    )
+    negative_half, *_ = _constant_profile_source(
+        start_angle=0.25 * math.pi, rotation_angle=-math.pi
+    )
+
+    assert half.plasma_volume == pytest.approx(full.plasma_volume / 2.0, rel=2.0e-3)
+    assert half.source.strength == pytest.approx(full.source.strength / 2.0, rel=2.0e-3)
+    assert half.fusion_power == pytest.approx(full.fusion_power / 2.0, rel=2.0e-3)
+    assert negative_half.plasma_volume == pytest.approx(
+        full.plasma_volume / 2.0, rel=2.0e-3
+    )
+
+
+def test_toroidal_sector_crossing_phi_seam_has_inactive_mesh_gap():
+    result, *_ = _constant_profile_source(
+        start_angle=7.0 * math.pi / 4.0, rotation_angle=math.pi / 2.0
+    )
+
+    phi_grid = np.asarray(result.source.mesh.phi_grid)
+    gap_index = int(np.argmax(np.diff(phi_grid)))
+    strengths = np.asarray(
+        [source.strength for source in result.source.sources.flat]
+    ).reshape((10, len(phi_grid) - 1, 10))
+
+    assert len(phi_grid) == 14  # 12 requested active bins plus the seam gap
+    assert strengths[:, gap_index, :].sum() == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"start_angle": 3.0 * math.pi},
+        {"start_angle": "zero"},
+        {"rotation_angle": 0.0},
+        {"rotation_angle": 3.0 * math.pi},
+        {"rotation_angle": "half"},
+    ],
+)
+def test_invalid_toroidal_sector_arguments_are_rejected(kwargs):
+    with pytest.raises(ValueError):
+        _constant_profile_source(**kwargs)

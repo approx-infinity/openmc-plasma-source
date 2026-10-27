@@ -10,7 +10,11 @@ from .boundary import (
 from .geometry import FourierZernikeSurface
 from .optimization import ActionGrid, CoefficientLayout
 from .optimizer import optimize_surface
-from .sampling import StellaratorSource, sample_stellarator_source
+from .sampling import (
+    StellaratorSource,
+    _validate_toroidal_angles,
+    sample_stellarator_source,
+)
 
 
 def _validate_basis_order(basis_order: Tuple[int, int, int]) -> None:
@@ -51,6 +55,8 @@ def stellarator_source(
     fuel: Dict[str, float] = {"D": 0.5, "T": 0.5},
     sample_size: Tuple[int, int, int] = (100, 100, 100),
     mesh_resolution: Tuple[int, int, int] = (100, 100, 100),
+    start_angle: float = 0.0,
+    rotation_angle: float = 2.0 * pi,
     *,
     basis_order: Tuple[int, int, int] = (2, 2, 2),
     optimize_geometry: bool = False,
@@ -93,6 +99,13 @@ def stellarator_source(
         Scalar quadrature resolution ``(n_s, n_theta, n_zeta)``.
     mesh_resolution:
         OpenMC cylindrical mesh resolution ``(n_R, n_phi, n_Z)``.
+    start_angle:
+        Toroidal angle at which the source sector starts, in radians. Must be
+        between ``-2*pi`` and ``2*pi``.
+    rotation_angle:
+        Signed toroidal extent of the source sector, in radians. Must be
+        non-zero and between ``-2*pi`` and ``2*pi``. A negative value selects
+        the sector in the decreasing-toroidal-angle direction.
     basis_order:
         Fourier–Zernike order ``(n_max, m_max, l_max)``.
     optimize_geometry:
@@ -123,6 +136,7 @@ def stellarator_source(
     """
 
     _validate_basis_order(basis_order)
+    _validate_toroidal_angles(start_angle, rotation_angle)
     if asymmetry != 0.0 and (basis_order[1] < 2 or basis_order[2] < 2):
         raise ValueError(
             "nonzero asymmetry requires basis_order m_max >= 2 and l_max >= 2"
@@ -222,6 +236,8 @@ def stellarator_source(
         fuel=fuel,
         sample_size=sample_size,
         mesh_resolution=mesh_resolution,
+        start_angle=start_angle,
+        rotation_angle=rotation_angle,
     )
     result.optimization_result = optimization_result
     return result

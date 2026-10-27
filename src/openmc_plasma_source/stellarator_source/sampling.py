@@ -43,6 +43,57 @@ class StellaratorSource:
     optimization_result: object | None = None
 
 
+def _validate_toroidal_angles(start_angle: float, rotation_angle: float) -> None:
+    """Validate the toroidal sector arguments used by the source APIs."""
+
+    if not (
+        isinstance(start_angle, (int, float))
+        and not isinstance(start_angle, bool)
+        and -2.0 * pi <= start_angle <= 2.0 * pi
+    ):
+        raise ValueError("start_angle must be a float between -2*pi and 2*pi")
+    if not (
+        isinstance(rotation_angle, (int, float))
+        and not isinstance(rotation_angle, bool)
+        and -2.0 * pi <= rotation_angle <= 2.0 * pi
+        and rotation_angle != 0.0
+    ):
+        raise ValueError(
+            "rotation_angle must be a non-zero float between -2*pi and 2*pi"
+        )
+
+
+def _toroidal_phi_grid(
+    start_angle: float, rotation_angle: float, n_phi: int
+) -> np.ndarray:
+    """Build cylindrical-mesh phi edges for a selected toroidal sector.
+
+    For a sector crossing the ``0``/``2*pi`` seam, the returned grid covers
+    the full circle and includes one inactive gap between the two active
+    pieces. The requested ``n_phi`` bins are distributed over the active
+    sector; the extra gap bin receives no samples.
+    """
+
+    two_pi = 2.0 * pi
+    width = abs(rotation_angle)
+    if np.isclose(width, two_pi):
+        return np.linspace(0.0, two_pi, n_phi + 1)
+
+    lower = min(start_angle, start_angle + rotation_angle) % two_pi
+    upper = lower + width
+    raw = np.linspace(lower, upper, n_phi + 1)
+    if upper <= two_pi + 1.0e-12:
+        return np.clip(raw, 0.0, two_pi)
+
+    seam_upper = upper - two_pi
+    before_seam = raw[raw < two_pi]
+    after_seam = raw[raw > two_pi] - two_pi
+    edges = np.concatenate(
+        ([0.0], after_seam, [seam_upper, lower], before_seam, [two_pi])
+    )
+    return np.unique(edges)
+
+
 def _validate_resolution(name: str, resolution: Tuple[int, ...], dimensions: int) -> None:
     """Require a resolution tuple with the requested number of positive ints.
 
@@ -124,6 +175,8 @@ def sample_stellarator_source(
     fuel: Dict[str, float] = {"D": 0.5, "T": 0.5},
     sample_size: Tuple[int, int, int] = (100, 100, 100),
     mesh_resolution: Tuple[int, int, int] = (100, 100, 100),
+    start_angle: float = 0.0,
+    rotation_angle: float = 2.0 * pi,
 ) -> StellaratorSource:
     """Integrate fusion emission over a surface and bin it into an OpenMC mesh.
 
@@ -167,6 +220,13 @@ def sample_stellarator_source(
         Midpoint quadrature counts ``(n_s, n_theta, n_zeta)``.
     mesh_resolution : tuple of int
         Cylindrical source mesh counts ``(n_R, n_phi, n_Z)``.
+    start_angle : float
+        Toroidal angle at which the source sector starts, in radians. Must be
+        between ``-2*pi`` and ``2*pi``.
+    rotation_angle : float
+        Signed toroidal extent of the source sector, in radians. Must be
+        non-zero and between ``-2*pi`` and ``2*pi``. A negative value selects
+        the sector in the decreasing-toroidal-angle direction.
 
     Returns
     -------
@@ -187,14 +247,21 @@ def sample_stellarator_source(
         raise ValueError("minor_radius must be positive and finite")
     if pedestal_radius <= 0.0 or pedestal_radius >= minor_radius:
         raise ValueError("pedestal_radius must be positive and less than minor_radius")
+    _validate_toroidal_angles(start_angle, rotation_angle)
     _validate_resolution("sample_size", sample_size, 3)
     _validate_resolution("mesh_resolution", mesh_resolution, 3)
 
     n_s, n_theta, n_zeta = sample_size
-    n_r, n_phi, n_z = mesh_resolution
+    n_r, n_phi_requested, n_z = mesh_resolution
     ds = 1.0 / n_s
     dtheta = 2.0 * pi / n_theta
-    dzeta = 2.0 * pi / n_zeta
+    zeta_start = min(start_angle, start_angle + rotation_angle)
+    zeta_extent = abs(rotation_angle)
+    dzeta = zeta_extent / n_zeta
+    phi_grid = _toroidal_phi_grid(
+        start_angle, rotation_angle, n_phi_requested
+    )
+    n_phi = len(phi_grid) - 1
 
     samples = []
     plasma_volume_cm3 = 0.0
@@ -242,7 +309,7 @@ def sample_stellarator_source(
         for j in range(n_theta):
             theta = (j + 0.5) * dtheta
             for k in range(n_zeta):
-                zeta = (k + 0.5) * dzeta
+                zeta = zeta_start + (k + 0.5) * dzeta
                 evaluation = surface.evaluate(s, theta, zeta)
                 jacobian = evaluation.jacobian
                 if not isfinite(jacobian) or jacobian <= 0.0:
@@ -281,7 +348,6 @@ def sample_stellarator_source(
         raise ValueError("sampled stellarator geometry has degenerate mesh bounds")
 
     r_grid = tuple(r_min + index * (r_max - r_min) / n_r for index in range(n_r + 1))
-    phi_grid = tuple(index * 2.0 * pi / n_phi for index in range(n_phi + 1))
     z_grid = tuple(z_min + index * (z_max - z_min) / n_z for index in range(n_z + 1))
     mesh = openmc.CylindricalMesh(
         r_grid=r_grid,

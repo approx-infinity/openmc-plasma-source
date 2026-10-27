@@ -16,7 +16,7 @@ non-axisymmetric boundary coefficients.
 """
 
 from pathlib import Path
-from math import sqrt
+from math import sqrt, radians
 
 import openmc
 
@@ -55,6 +55,8 @@ def main() -> None:
         ion_temperature_separatrix=0.1e3,    # eV
         pedestal_radius=0.8 * MINOR_RADIUS,  # cm, unused in L-mode
         fuel={"D": 0.5, "T": 0.5},
+        start_angle = 0.0,
+        rotation_angle = radians(360),
         # Scalar quadrature resolution: (n_s, n_theta, n_zeta).
         sample_size=(32, 64, 64),
         # OpenMC cylindrical mesh resolution: (n_R, n_phi, n_Z).
@@ -91,7 +93,7 @@ def main() -> None:
     # Optional visualization of sampled source positions.
     from openmc_source_plotter import plot_source_position
 
-    plot = plot_source_position(this=settings, n_samples=200)
+    plot = plot_source_position(this=settings, n_samples=1000)
     plot.update_layout(scene={"aspectmode": "data"})
     plot.show()
 
