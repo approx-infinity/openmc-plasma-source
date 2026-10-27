@@ -6,21 +6,13 @@ from numpy.typing import NDArray
 import openmc
 from openmc import IndependentSource
 import openmc.checkvalue as cv
-from NeSST.spectral_model import reac_DD, reac_DT, reac_TT
 
 from .fuel_types import get_neutron_energy_distribution, get_reactions_from_fuel
-
-_EV_TO_J = 1.602176634e-19
-_FUSION_Q_MEV = {
-    "DD": 7.3,
-    "DT": 17.6,
-    "TT": 11.3,
-}
-_REACTION_REACTIVITY = {
-    "DD": reac_DD,
-    "DT": reac_DT,
-    "TT": reac_TT,
-}
+from .stellarator_source.emission import (
+    fusion_emission_densities,
+    reaction_rate_density,
+)
+from .stellarator_source.profiles import ion_density_profile, ion_temperature_profile
 
 
 @dataclass
@@ -317,26 +309,11 @@ def tokamak_source(
     # Plasma volume for the selected toroidal sector, in m^3.
     plasma_volume = np.sum(volume_weight) * da * dalpha * abs(rotation_angle) * 1e-6
 
-    # Compute total neutron source density across all reactions
-    fuel_densities = {key: densities * value for key, value in fuel.items()}
-    reactions = get_reactions_from_fuel(fuel)
-
-    total_source_density = np.zeros_like(a_flat)
-    total_fusion_power_density = np.zeros_like(a_flat)
-    for reaction in reactions:
-        if reaction == "DD":
-            fuel_density = 0.5 * fuel_densities["D"] ** 2
-        elif reaction == "TT":
-            fuel_density = 0.5 * fuel_densities["T"] ** 2
-        elif reaction == "DT":
-            fuel_density = fuel_densities["T"] * fuel_densities["D"]
-
-        reaction_rate = tokamak_reaction_rate(fuel_density, temperatures, reaction)
-        # TT produces two neutrons per fusion reaction; DD and DT produce one.
-        total_source_density += reaction_rate * (2 if reaction == "TT" else 1)
-        total_fusion_power_density += (
-            reaction_rate * _FUSION_Q_MEV[reaction] * 1e6 * _EV_TO_J
-        )
+    # Compute total neutron source and fusion-power densities using the shared
+    # geometry-independent emission layer.
+    total_source_density, total_fusion_power_density = fusion_emission_densities(
+        densities, temperatures, fuel
+    )
 
     # Bin source density and temperature into mesh cells, weighting each grid
     # point by the plasma volume element (toroidal R * poloidal Jacobian).
@@ -439,34 +416,16 @@ def tokamak_ion_density(
         ion density (m-3)
     """
 
-    r = np.asarray(r)
-    if np.any(r < 0):
-        raise ValueError("Minor radius must not be negative")
-
-    if mode == "L":
-        density = (
-            ion_density_centre
-            * (1 - (r / minor_radius) ** 2) ** ion_density_peaking_factor
-        )
-    elif mode in ["H", "A"]:
-        r_core = np.minimum(r, pedestal_radius)
-        density = np.where(
-            r < pedestal_radius,
-            (
-                (ion_density_centre - ion_density_pedestal)
-                * (1 - (r_core / pedestal_radius) ** 2) ** ion_density_peaking_factor
-                + ion_density_pedestal
-            ),
-            (
-                (ion_density_pedestal - ion_density_separatrix)
-                * (minor_radius - r)
-                / (minor_radius - pedestal_radius)
-                + ion_density_separatrix
-            ),
-        )
-    else:
-        raise ValueError(f'Mode {mode} not in available options ["L", "H", "A"]')
-    return density
+    return ion_density_profile(
+        mode=mode,
+        ion_density_centre=ion_density_centre,
+        ion_density_peaking_factor=ion_density_peaking_factor,
+        ion_density_pedestal=ion_density_pedestal,
+        minor_radius=minor_radius,
+        pedestal_radius=pedestal_radius,
+        ion_density_separatrix=ion_density_separatrix,
+        r=r,
+    )
 
 
 def tokamak_ion_temperature(
@@ -503,40 +462,17 @@ def tokamak_ion_temperature(
         ion temperature (eV)
     """
 
-    r = np.asarray(r)
-    if np.any(r < 0):
-        raise ValueError("Minor radius must not be negative")
-
-    if mode == "L":
-        temperature = (
-            ion_temperature_centre
-            * (1 - (r / minor_radius) ** 2) ** ion_temperature_peaking_factor
-        )
-    elif mode in ["H", "A"]:
-        # Clip r to pedestal_radius in the core branch to avoid raising
-        # a negative base to a non-integer power (which produces NaN).
-        # np.where evaluates both branches for all elements, so without
-        # clipping the r > pedestal_radius elements trigger a warning
-        # even though their values are discarded.
-        r_core = np.minimum(r, pedestal_radius)
-        temperature = np.where(
-            r < pedestal_radius,
-            (
-                ion_temperature_pedestal
-                + (ion_temperature_centre - ion_temperature_pedestal)
-                * (1 - (r_core / pedestal_radius) ** ion_temperature_beta)
-                ** ion_temperature_peaking_factor
-            ),
-            (
-                ion_temperature_separatrix
-                + (ion_temperature_pedestal - ion_temperature_separatrix)
-                * (minor_radius - r)
-                / (minor_radius - pedestal_radius)
-            ),
-        )
-    else:
-        raise ValueError(f'Mode {mode} not in available options ["L", "H", "A"]')
-    return temperature * 1e3
+    return ion_temperature_profile(
+        r=r,
+        mode=mode,
+        pedestal_radius=pedestal_radius,
+        ion_temperature_pedestal=ion_temperature_pedestal,
+        ion_temperature_centre=ion_temperature_centre,
+        ion_temperature_beta=ion_temperature_beta,
+        ion_temperature_peaking_factor=ion_temperature_peaking_factor,
+        ion_temperature_separatrix=ion_temperature_separatrix,
+        minor_radius=minor_radius,
+    )
 
 
 def tokamak_convert_a_alpha_to_R_Z(
@@ -615,11 +551,4 @@ def tokamak_reaction_rate(
     Returns:
         Fusion reaction rate density (reactions/s/m3).
     """
-    try:
-        reactivity = _REACTION_REACTIVITY[reaction]
-    except KeyError as exc:
-        raise ValueError(
-            f'Reaction {reaction} not in available options ["DD", "DT", "TT"]'
-        ) from exc
-
-    return np.asarray(ion_density) * reactivity(np.asarray(ion_temperature))
+    return reaction_rate_density(ion_density, ion_temperature, reaction)
