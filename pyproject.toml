@@ -41,6 +41,22 @@ tests = [
     "NeSST>=1.1.0",
     "openmc_source_plotter"
 ]
+stellarator = [
+    "jax>=0.4",
+    "scipy>=1.9",
+    "pyvista>=0.40"
+]
+stellarator-optimization = [
+    "jax>=0.4",
+    "scipy>=1.9"
+]
+stellarator-plotting = [
+    "pyvista>=0.40"
+]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0"
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
